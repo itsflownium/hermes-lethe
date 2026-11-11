@@ -15,7 +15,7 @@ import sys
 import time
 from typing import Any
 
-from . import art, flow, store
+from . import art, flow, shred, store
 
 FRAME_S = 0.12
 POLL_S = 0.6
@@ -25,14 +25,29 @@ def _color() -> bool:
     return sys.stdout.isatty() and not os.environ.get("NO_COLOR")
 
 
-def _live(s: dict) -> bool:
-    """Off the record and not finished: /lethe-end or the end of the chat haven't happened yet."""
-    return bool(s.get("on")) and not s.get("ended") and not s.get("shredded")
+STALE_S = 30 * 60  # a chat with no session row and no activity for this long is treated as gone
+
+
+def _ended(sid: str, s: dict) -> bool:
+    """Lethe's own record, or Hermes's session row, says this chat is over."""
+    if s.get("ended") or s.get("shredded"):
+        return True
+    row = shred.session_row(sid)
+    if row is None:  # can't read Hermes's database: trust Lethe's record
+        return False
+    if not row:  # no row: a chat that never got going, or was removed
+        return time.time() - float(s.get("touched") or s.get("since") or 0) > STALE_S
+    return bool(row.get("ended_at"))
+
+
+def _live(sid: str, s: dict) -> bool:
+    """Off the record and still open."""
+    return bool(s.get("on")) and not _ended(sid, s)
 
 
 def _latest(on_only: bool = True) -> str | None:
     for sid, s in store.recent(50):
-        if _live(s) or not on_only:
+        if not on_only or _live(sid, s):
             return sid
     return None
 
@@ -47,19 +62,36 @@ def _resolve(given: str | None, live_only: bool = False) -> str | None:
     return _latest(True) if live_only else (_latest(True) or _latest(False))
 
 
+_APPS = {"cli": "CLI", "tui": "TUI", "desktop": "Desktop", "gui": "Desktop"}
+
+
+def _when(ts: float) -> str:
+    if not ts:
+        return "?"
+    lt = time.localtime(ts)
+    return time.strftime("%H:%M" if time.strftime("%Y%m%d", lt) == time.strftime("%Y%m%d") else "%d %b", lt)
+
+
 def _list() -> int:
     rows = store.recent(20)
     if not rows:
         print("Lethe hasn't been used yet. In a chat, type /lethe to take it off the record.")
         return 0
     t, d, r = (art.TEAL, art.DIM, art.RESET) if _color() else ("", "", "")
-    print(f"{'chat':<28} {'state':<16} {'kept out':>8}  transcript")
+    print(f"{d}{'chat':<14} {'app':<8} {'started':<8} {'state':<26} {'kept out':>8}{r}")
     for sid, s in rows:
         n = len(s.get("events") or [])
-        state = f"{t}off the record{r}  " if s.get("on") else f"{d}on the record{r}   "
-        tr = "deleted" if s.get("shredded") else ("deleted at end" if s.get("on") else "kept")
-        print(f"{sid[:28]:<28} {state} {n:>8}  {tr}")
-    print(f"\n{d}hermes lethe watch  shows the live river for the newest off-the-record chat{r}")
+        app = _APPS.get(shred.origin(sid), "?")
+        if _live(sid, s):
+            state = f"{t}{'live · off the record':<26}{r}"
+        elif s.get("on") or s.get("shredded"):
+            gone = "transcript deleted" if s.get("shredded") else "transcript kept"
+            state = f"{d}{'ended · ' + gone:<26}{r}"
+        else:
+            state = f"{d}{'back on the record':<26}{r}"
+        short = sid[:12] + "…" if len(sid) > 13 else sid
+        print(f"{short:<14} {app:<8} {_when(float(s.get('since') or s.get('touched') or 0)):<8} {state} {n:>8}")
+    print(f"\n{d}hermes lethe watch  follows the newest live chat · hermes lethe show ID  one chat's river{r}")
     return 0
 
 

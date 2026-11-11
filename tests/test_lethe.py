@@ -466,3 +466,20 @@ def test_arm_window_is_configurable(monkeypatch):
     assert 85 < a["expires"] - time.time() <= 90
     a = store.arm(1)  # floors at 30 seconds
     assert a["expires"] - time.time() >= 29
+
+
+def test_list_marks_closed_chats_ended(ctx, capsys, monkeypatch):
+    from lethe import cli, shred
+    lethe(ctx)
+    monkeypatch.setattr(shred, "session_row", lambda sid: {"ended_at": None, "created_source": "tui"})
+    monkeypatch.setattr(shred, "origin", lambda sid: "tui")
+    assert cli._latest(True) == "s1"
+    cli._list()
+    out = capsys.readouterr().out
+    assert "live · off the record" in out and "TUI" in out
+    monkeypatch.setattr(shred, "session_row", lambda sid: {"ended_at": 123.0})
+    assert cli._latest(True) is None
+    cli._list()
+    assert "ended · transcript kept" in capsys.readouterr().out
+    monkeypatch.setattr(shred, "session_row", lambda sid: {})  # row gone, but just touched: still live
+    assert cli._latest(True) == "s1"

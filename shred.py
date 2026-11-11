@@ -65,6 +65,22 @@ def message_count(sid: str) -> int:
         return 0
 
 
+def session_row(sid: str) -> dict[str, Any] | None:
+    """Hermes's row for a chat: ``{}`` when it doesn't exist, ``None`` when it can't be read."""
+    try:
+        from hermes_state import SessionDB
+
+        db = SessionDB()
+        try:
+            return dict(db.get_session(sid) or {})
+        finally:
+            close = getattr(db, "close", None)
+            if callable(close):
+                close()
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def origin(sid: str) -> str:
     """The client that created a chat (``cli``, ``tui``, ``desktop``), from Hermes's session row."""
     if sid in _origins:
