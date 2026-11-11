@@ -189,6 +189,21 @@ def pop_pending_receipt(exclude_sid: str = "") -> dict[str, Any] | None:
         return receipt
 
 
+def note_app(sid: str, app: str) -> None:
+    """Remember which client a Lethe chat came from, so the list can show it after the transcript is gone.
+
+    Only touches chats Lethe already has a record for."""
+    s = get(sid)
+    if not app or not s or s.get("app") == app:
+        return
+    with _locked():
+        data = _read()
+        rec = data.get("sessions", {}).get(sid)
+        if rec is not None:
+            rec["app"] = app
+            _write(data)
+
+
 def mark_ended(sid: str) -> None:
     with _locked():
         data = _read()

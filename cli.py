@@ -25,31 +25,39 @@ def _color() -> bool:
     return sys.stdout.isatty() and not os.environ.get("NO_COLOR")
 
 
-STALE_S = 30 * 60  # a chat with no session row and no activity for this long is treated as gone
+IDLE_S = 30 * 60  # off the record but quiet this long: probably a window closed without ending the chat
 
 
-def _ended(sid: str, s: dict) -> bool:
-    """Lethe's own record, or Hermes's session row, says this chat is over."""
+def _state(sid: str, s: dict) -> str:
+    """``live``, ``idle``, ``ended`` or ``off`` (back on the record)."""
+    if not s.get("on"):
+        return "ended" if s.get("shredded") else "off"
     if s.get("ended") or s.get("shredded"):
-        return True
+        return "ended"
     row = shred.session_row(sid)
-    if row is None:  # can't read Hermes's database: trust Lethe's record
-        return False
-    if not row:  # no row: a chat that never got going, or was removed
-        return time.time() - float(s.get("touched") or s.get("since") or 0) > STALE_S
-    return bool(row.get("ended_at"))
+    if row and row.get("ended_at"):
+        return "ended"
+    last = max(
+        float(s.get("touched") or s.get("since") or 0),
+        float((row or {}).get("last_activity_at") or 0),
+        max((float(e.get("t") or 0) for e in s.get("events") or [] if isinstance(e.get("t"), (int, float))), default=0.0),
+    )
+    return "live" if time.time() - last <= IDLE_S else "idle"
 
 
 def _live(sid: str, s: dict) -> bool:
-    """Off the record and still open."""
-    return bool(s.get("on")) and not _ended(sid, s)
+    return _state(sid, s) == "live"
 
 
 def _latest(on_only: bool = True) -> str | None:
-    for sid, s in store.recent(50):
-        if not on_only or _live(sid, s):
-            return sid
-    return None
+    """Newest live chat; else the newest idle one; else (on_only=False) the newest of any."""
+    rows = store.recent(50)
+    states = [(sid, _state(sid, s)) for sid, s in rows]
+    for want in ("live", "idle"):
+        for sid, st in states:
+            if st == want:
+                return sid
+    return None if on_only else (rows[0][0] if rows else None)
 
 
 def _resolve(given: str | None, live_only: bool = False) -> str | None:
@@ -81,17 +89,20 @@ def _list() -> int:
     print(f"{d}{'chat':<14} {'app':<8} {'started':<8} {'state':<26} {'kept out':>8}{r}")
     for sid, s in rows:
         n = len(s.get("events") or [])
-        app = _APPS.get(shred.origin(sid), "?")
-        if _live(sid, s):
+        app = _APPS.get(s.get("app") or shred.origin(sid), "?")
+        st = _state(sid, s)
+        if st == "live":
             state = f"{t}{'live · off the record':<26}{r}"
-        elif s.get("on") or s.get("shredded"):
+        elif st == "idle":
+            state = f"{'idle · off the record':<26}"
+        elif st == "ended":
             gone = "transcript deleted" if s.get("shredded") else "transcript kept"
             state = f"{d}{'ended · ' + gone:<26}{r}"
         else:
             state = f"{d}{'back on the record':<26}{r}"
         short = sid[:12] + "…" if len(sid) > 13 else sid
         print(f"{short:<14} {app:<8} {_when(float(s.get('since') or s.get('touched') or 0)):<8} {state} {n:>8}")
-    print(f"\n{d}hermes lethe watch  follows the newest live chat · hermes lethe show ID  one chat's river{r}")
+    print(f"\n{d}hermes lethe watch  follows the newest live (else idle) chat · hermes lethe show ID  one chat's river{r}")
     return 0
 
 

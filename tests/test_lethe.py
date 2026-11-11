@@ -1,4 +1,5 @@
 import json
+import time
 
 import pytest
 
@@ -483,3 +484,25 @@ def test_list_marks_closed_chats_ended(ctx, capsys, monkeypatch):
     assert "ended · transcript kept" in capsys.readouterr().out
     monkeypatch.setattr(shred, "session_row", lambda sid: {})  # row gone, but just touched: still live
     assert cli._latest(True) == "s1"
+
+
+def test_quiet_chat_is_idle_and_watch_falls_back_to_it(ctx, capsys, monkeypatch):
+    from lethe import cli, shred
+    lethe(ctx)
+    old = time.time() - cli.IDLE_S - 60
+    monkeypatch.setattr(shred, "session_row", lambda sid: {"ended_at": None, "last_activity_at": old})
+    monkeypatch.setattr(shred, "origin", lambda sid: "cli")
+    s = dict(store.get("s1"), touched=old, since=old)
+    assert cli._state("s1", s) == "idle"
+    monkeypatch.setattr(store, "recent", lambda n=20: [("s1", s)])
+    assert cli._latest(True) == "s1"  # no live chat, so the idle one
+    cli._list()
+    assert "idle · off the record" in capsys.readouterr().out
+
+
+def test_app_is_remembered_after_the_row_is_gone(ctx):
+    lethe(ctx)
+    store.note_app("s1", "tui")
+    assert store.get("s1")["app"] == "tui"
+    store.note_app("never-lethe", "cli")  # chats Lethe never touched get no record
+    assert store.get("never-lethe") is None

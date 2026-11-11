@@ -11,6 +11,7 @@ logger = logging.getLogger(__name__)
 
 def shred(sid: str) -> tuple[bool, str]:
     """Delete *sid* (and its compression chain) from ``state.db``. Returns ``(ok, note)``."""
+    origin(sid)  # keep the client's name in Lethe's record once the row is gone
     try:
         from hermes_state import SessionDB
     except Exception:  # noqa: BLE001
@@ -101,4 +102,8 @@ def origin(sid: str) -> str:
         value = ""
     if value:
         _origins[sid] = value
+        try:
+            store.note_app(sid, value)
+        except Exception:  # noqa: BLE001
+            pass
     return value
