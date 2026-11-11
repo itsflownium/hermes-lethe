@@ -1,0 +1,42 @@
+name: lethe
+version: 0.1.0
+manifest_version: 2
+api_version: 1
+description: >-
+  Take one chat off the record. While Lethe is on, Hermes can still use what it already knows,
+  but nothing from the chat is written to its memory, your user profile, its skills or a memory
+  provider, including by the background review. The transcript is deleted when the chat ends,
+  and a "where it went" view shows everything that was kept out. Works in the CLI, TUI and Desktop.
+author: itsflownium
+license: MIT
+tags: [privacy, memory, chat]
+requires_hermes: ">=0.23.1"
+
+provides_hooks:
+  - pre_tool_call
+  - pre_llm_call
+  - post_llm_call
+  - on_session_finalize
+  - on_session_start
+
+config_schema:
+  keep_transcript:
+    type: bool
+    default: false
+    label: Keep the transcript
+    description: Keep an off-the-record chat in your session history instead of deleting it when it ends. Memory, profile and skills stay blocked either way.
+  block_tools:
+    type: list
+    default: []
+    label: Extra tools to block
+    description: Names of any other tools that save things for later (for example an MCP notes tool). They're blocked in off-the-record chats too.
+  status_line:
+    type: bool
+    default: true
+    label: Status line in the CLI and TUI
+    description: After each reply in an off-the-record chat, show one short line saying how many writes were kept out.
+  arm_minutes:
+    type: int
+    default: 5
+    label: Start off the record window (minutes)
+    description: How long Desktop's "Start off the record" waits for the next new chat before it lapses.
