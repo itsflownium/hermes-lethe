@@ -26,6 +26,13 @@ In Greek myth, Lethe is the river of forgetting in the underworld. Hermes guided
 > plugin can stop it. If you use one, see [Using an external memory provider](#using-an-external-memory-provider)
 > for a prompt that has your own Hermes extend your local copy of Lethe.
 
+Quick version, paste into any Hermes chat (replace `<PROVIDER>`):
+
+```text
+Extend my local Lethe plugin (~/.hermes/plugins/lethe) so off-the-record chats also skip my <PROVIDER> memory provider's
+per-turn sync, session-end extraction and save tools when store.is_on(session_id) is true. Show me the diff, add a test, then run hermes gateway restart.
+```
+
 ## Install
 
 ```bash
